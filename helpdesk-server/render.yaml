@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: helpdesk-server
+    runtime: node
+    plan: free
+    rootDir: helpdesk-server
+    buildCommand: "echo 'no build step - zero dependencies'"
+    startCommand: "node index.js"
+    autoDeploy: true
+    disk:
+      name: helpdesk-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1

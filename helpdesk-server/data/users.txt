@@ -1,0 +1,98 @@
+User ID: 1
+Employee ID: 19221160
+Name: Mughees Khalid
+Email: mughees.khalid1@transsion.com
+PasswordHash: 8bd7c4267ddccc990b12e5c0f3574884:9cf0ae1ba9bc655b8ad276e15600ba3fbcb6279e21fb1c07efe86ceafa6a4bd8213a02dfed65928a8c7183e4546708f612ec1cf156ab08b1125375e1bd607fff
+Role: admin
+Department: IT
+Created At: 2026-08-20T10:00:00.000Z
+----------------------------------
+User ID: 2
+Employee ID: 19222951
+Name: Muhammad Abubakar
+Email: muhammad.abubakar21@transsion.com
+PasswordHash: 8bd7c4267ddccc990b12e5c0f3574884:9cf0ae1ba9bc655b8ad276e15600ba3fbcb6279e21fb1c07efe86ceafa6a4bd8213a02dfed65928a8c7183e4546708f612ec1cf156ab08b1125375e1bd607fff
+Role: admin
+Department: IT
+Created At: 2026-08-07T05:06:31.923Z
+----------------------------------
+User ID: 3
+Employee ID: 19221161
+Name: Tayyab Jamil
+Email: tayyab.jamil1@transsion.com
+PasswordHash: 8bd7c4267ddccc990b12e5c0f3574884:9cf0ae1ba9bc655b8ad276e15600ba3fbcb6279e21fb1c07efe86ceafa6a4bd8213a02dfed65928a8c7183e4546708f612ec1cf156ab08b1125375e1bd607fff
+Role: admin
+Department: Admin
+Created At: 2026-08-20T10:00:00.000Z
+----------------------------------
+User ID: 4
+Employee ID: 19222815
+Name: Ali Israr
+Email: ali.israrsiddique18@transsion.com
+PasswordHash: 8bd7c4267ddccc990b12e5c0f3574884:9cf0ae1ba9bc655b8ad276e15600ba3fbcb6279e21fb1c07efe86ceafa6a4bd8213a02dfed65928a8c7183e4546708f612ec1cf156ab08b1125375e1bd607fff
+Role: admin
+Department: Admin
+Created At: 2026-08-20T10:00:00.000Z
+----------------------------------
+User ID: 5
+Employee ID: 19220305
+Name: Abdul Samad
+Email: abdul.samad@transsion.com
+PasswordHash: 8bd7c4267ddccc990b12e5c0f3574884:9cf0ae1ba9bc655b8ad276e15600ba3fbcb6279e21fb1c07efe86ceafa6a4bd8213a02dfed65928a8c7183e4546708f612ec1cf156ab08b1125375e1bd607fff
+Role: admin
+Department: Admin
+Created At: 2026-08-20T10:00:00.000Z
+----------------------------------
+User ID: 6
+Employee ID: 19222840
+Name: Rameen Shahid
+Email: rameenshahid6066@transsion.com
+PasswordHash: 8bd7c4267ddccc990b12e5c0f3574884:9cf0ae1ba9bc655b8ad276e15600ba3fbcb6279e21fb1c07efe86ceafa6a4bd8213a02dfed65928a8c7183e4546708f612ec1cf156ab08b1125375e1bd607fff
+Role: admin
+Department: Admin
+Created At: 2026-08-20T10:00:00.000Z
+----------------------------------
+User ID: 7
+Employee ID: 19220818
+Name: Iqra Manzoor
+Email: iqra.manzoor@transsion.com
+PasswordHash: 8bd7c4267ddccc990b12e5c0f3574884:9cf0ae1ba9bc655b8ad276e15600ba3fbcb6279e21fb1c07efe86ceafa6a4bd8213a02dfed65928a8c7183e4546708f612ec1cf156ab08b1125375e1bd607fff
+Role: admin
+Department: Admin
+Created At: 2026-08-20T10:00:00.000Z
+----------------------------------
+User ID: 8
+Employee ID: 19220153
+Name: Mehwish Jamil
+Email: mehwish.jamil@transsion.com
+PasswordHash: 8bd7c4267ddccc990b12e5c0f3574884:9cf0ae1ba9bc655b8ad276e15600ba3fbcb6279e21fb1c07efe86ceafa6a4bd8213a02dfed65928a8c7183e4546708f612ec1cf156ab08b1125375e1bd607fff
+Role: admin
+Department: Admin
+Created At: 2026-08-20T10:00:00.000Z
+----------------------------------
+User ID: 9
+Employee ID: 19222451
+Name: Sumara Waqar
+Email: sumera.waqar1@transsion.com
+PasswordHash: 93e53c7a8a2ea45996460badd39f6e33:f682a8df712a249ff383e22fad4a5648610c81d6916253690a8ee99ece233f807cf36e73ca8e893967df92f94a687953a2440ea7f40ff5683cc378f33d835635
+Role: admin
+Department: Admin
+Created At: 2026-08-20T10:00:00.000Z
+----------------------------------
+User ID: 10
+Employee ID: 19222154
+Name: Iram Parveen
+Email: iram.parveen1@transsion.com
+PasswordHash: 93e53c7a8a2ea45996460badd39f6e33:f682a8df712a249ff383e22fad4a5648610c81d6916253690a8ee99ece233f807cf36e73ca8e893967df92f94a687953a2440ea7f40ff5683cc378f33d835635
+Role: admin
+Department: Admin
+Created At: 2026-08-20T10:00:00.000Z
+----------------------------------
+User ID: 11
+Employee ID: 19222830
+Name: Hasnain Raza
+Email: hasnain.raza1@transsion.com
+PasswordHash: 93e53c7a8a2ea45996460badd39f6e33:f682a8df712a249ff383e22fad4a5648610c81d6916253690a8ee99ece233f807cf36e73ca8e893967df92f94a687953a2440ea7f40ff5683cc378f33d835635
+Role: admin
+Department: Admin
+Created At: 2026-08-20T10:00:00.000Z

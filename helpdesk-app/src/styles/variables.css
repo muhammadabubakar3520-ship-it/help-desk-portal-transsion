@@ -1,0 +1,43 @@
+/*
+  Design tokens for the TRANSSION HOLDINGS Help Desk Management System.
+  Mirrors the values in tailwind.config.js so non-Tailwind
+  code (e.g. inline SVG, third-party widgets) can stay in sync.
+*/
+:root {
+  /* Brand palette */
+  --color-brand-primary: #005bac;
+  --color-brand-primary-dark: #00478a;
+  --color-brand-secondary: #003b73;
+  --color-brand-accent: #00a3e0;
+
+  /* Ink scale - headings & body text */
+  --color-ink-950: #0b1626;
+  --color-ink-900: #1e293b;
+  --color-ink-800: #334155;
+  --color-ink-700: #475569;
+  --color-ink-600: #64748b;
+
+  /* Slate scale - neutral surfaces, backgrounds, borders */
+  --color-slate-50: #f5f7fa;
+  --color-slate-100: #eef2f7;
+  --color-slate-200: #e2e8f0;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #64748b;
+
+  /* Status colors */
+  --color-success: #16a34a;
+  --color-warning: #f59e0b;
+  --color-error: #dc2626;
+  --color-info: #00a3e0;
+
+  /* Typography */
+  --font-display: 'Poppins', 'Inter', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+
+  /* Layout */
+  --sidebar-width: 17rem;
+  --sidebar-width-collapsed: 5rem;
+  --navbar-height: 4.25rem;
+  --radius-card: 12px;
+}

@@ -1,0 +1,14 @@
+{
+  "name": "helpdesk-server",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Backend API for the Help Desk Portal. Pure Node.js (no external dependencies) - built-in http server, crypto-based password hashing, and a plain-text-file data store.",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

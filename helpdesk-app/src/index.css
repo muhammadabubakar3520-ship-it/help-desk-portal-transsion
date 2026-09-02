@@ -1,0 +1,115 @@
+@import './styles/variables.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply font-body text-ink-900;
+    background-color: #f5f7fa;
+  }
+  h1, h2, h3, h4 {
+    @apply font-display;
+  }
+  *:focus-visible {
+    outline: 2px solid #00a3e0;
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Buttons */
+  .btn-primary {
+    @apply relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-lg
+      bg-brand-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm
+      transition duration-150 hover:bg-brand-primary-dark hover:shadow-md
+      active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-brand-primary/30
+      bg-white px-4 py-2.5 text-sm font-semibold text-brand-primary transition duration-150
+      hover:border-brand-primary hover:bg-brand-primary/5 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-signal-coral/30
+      bg-white px-4 py-2.5 text-sm font-semibold text-signal-coral transition duration-150
+      hover:bg-signal-coral/5 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-success {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-signal-teal px-4 py-2.5
+      text-sm font-semibold text-white shadow-sm transition duration-150 hover:brightness-95
+      disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium
+      text-ink-700 transition hover:bg-slate-100;
+  }
+
+  .input-field {
+    @apply w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-ink-900
+      placeholder:text-slate-400 transition focus:border-brand-accent focus:ring-2 focus:ring-brand-accent/20;
+  }
+
+  .card {
+    @apply rounded-card border border-slate-200 bg-white shadow-card transition duration-200;
+  }
+  .card-hover {
+    @apply hover:-translate-y-0.5 hover:shadow-card-hover;
+  }
+
+  /* Status badges — exact spec mapping */
+  .badge {
+    @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold;
+  }
+  .badge-newly-created {
+    @apply badge bg-purple-50 text-purple-700 ring-1 ring-inset ring-purple-200;
+  }
+  .badge-pending {
+    @apply badge bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200;
+  }
+  .badge-approved {
+    @apply badge bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200;
+  }
+  .badge-progress {
+    @apply badge bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-200;
+  }
+  .badge-rejected {
+    @apply badge bg-red-50 text-red-700 ring-1 ring-inset ring-red-200;
+  }
+  .badge-closed {
+    @apply badge bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-300;
+  }
+  .badge-open {
+    @apply badge bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200;
+  }
+
+  /* KPI stat card with colored top border */
+  .stat-card {
+    @apply card card-hover relative flex flex-col gap-3 overflow-hidden p-5;
+  }
+  .stat-card::before {
+    content: '';
+    @apply absolute inset-x-0 top-0 h-1 bg-brand-primary;
+  }
+
+  .table-enterprise {
+    @apply w-full min-w-[720px] text-left text-sm;
+  }
+  .table-enterprise thead {
+    @apply sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500;
+  }
+  .table-enterprise th {
+    @apply px-5 py-3;
+  }
+  .table-enterprise td {
+    @apply px-5 py-3;
+  }
+  .table-enterprise tbody tr {
+    @apply transition hover:bg-brand-primary/[0.03];
+  }
+
+  /* Skeleton loading */
+  .skeleton {
+    @apply animate-pulse rounded-md bg-slate-200/70;
+  }
+}
