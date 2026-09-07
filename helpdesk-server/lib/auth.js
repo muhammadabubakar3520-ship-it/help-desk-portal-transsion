@@ -7,6 +7,9 @@ import { readSessions, writeSessions } from './db.js'
 
 const SCRYPT_KEYLEN = 64
 
+// In-memory session cache for faster lookups (sessions are short-lived anyway)
+let sessionCache = {}
+
 export function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex')
   const hash = crypto.scryptSync(password, salt, SCRYPT_KEYLEN).toString('hex')
@@ -26,22 +29,37 @@ export function createToken() {
   return crypto.randomBytes(32).toString('hex')
 }
 
-export function createSession(userId) {
-  const sessions = readSessions()
+export async function createSession(userId) {
+  const sessions = await readSessions()
   const token = createToken()
   sessions[token] = { userId, createdAt: new Date().toISOString() }
-  writeSessions(sessions)
+  sessionCache[token] = sessions[token]
+  await writeSessions(sessions)
   return token
 }
 
-export function destroySession(token) {
-  const sessions = readSessions()
+export async function destroySession(token) {
+  const sessions = await readSessions()
   delete sessions[token]
-  writeSessions(sessions)
+  delete sessionCache[token]
+  await writeSessions(sessions)
 }
 
 export function getUserIdForToken(token) {
   if (!token) return null
-  const sessions = readSessions()
-  return sessions[token]?.userId ?? null
+  // Try in-memory cache first (fast path)
+  if (sessionCache[token]) {
+    return sessionCache[token].userId
+  }
+  return null
+}
+
+// Initialize session cache on startup
+export async function initSessionCache() {
+  try {
+    sessionCache = await readSessions()
+  } catch (error) {
+    console.error('[auth] Failed to initialize session cache:', error.message)
+    sessionCache = {}
+  }
 }

@@ -1,6 +1,6 @@
 import { readTickets, writeTickets, readUsers } from '../lib/db.js'
 import { HttpError } from '../lib/http.js'
-import { requireUser, requireAdmin } from './auth.js'
+import { requireUser } from './auth.js'
 
 // Only Mughess Khalid dispatches tickets to other team members - everyone
 // else can only pick up a ticket for themselves. Matched by Employee ID
@@ -13,11 +13,12 @@ const DISPATCHER_EMPLOYEE_ID = '19221160'
 // assigned using one person's exact, canonical name - never a typo'd or
 // made-up stand-in (e.g. the old "Admin" placeholder) - and that only the
 // dispatcher can hand work to someone other than themselves.
-function resolveAssignee(rawAssignee, requester) {
+async function resolveAssignee(rawAssignee, requester) {
   const clean = String(rawAssignee || '').trim()
   if (!clean) return null
 
-  const staff = readUsers().filter((u) => u.role === 'admin')
+  const users = await readUsers()
+  const staff = users.filter((u) => u.role === 'admin')
   const match = staff.find((u) => u.name.toLowerCase() === clean.toLowerCase())
   if (!match) {
     throw new HttpError(400, 'Tickets can only be assigned to a registered staff member')
@@ -50,9 +51,13 @@ function nextId(items) {
 
 export const ticketRoutes = {
   async list(req) {
-    requireUser(req)
+    const userId = requireUser(req)
+    const users = await readUsers()
+    const user = users.find((u) => u.id === userId)
+    if (!user) throw new HttpError(401, 'Not authenticated')
+    
     const { status, requester, assignee } = req.query
-    let tickets = readTickets()
+    let tickets = await readTickets()
     if (status) tickets = tickets.filter((t) => t.status === status)
     if (requester) tickets = tickets.filter((t) => t.requester === requester)
     if (assignee) tickets = tickets.filter((t) => t.assignee === assignee)
@@ -61,20 +66,29 @@ export const ticketRoutes = {
   },
 
   async getById(req, id) {
-    requireUser(req)
-    const ticket = readTickets().find((t) => t.id === Number(id))
+    const userId = requireUser(req)
+    const users = await readUsers()
+    const user = users.find((u) => u.id === userId)
+    if (!user) throw new HttpError(401, 'Not authenticated')
+    
+    const tickets = await readTickets()
+    const ticket = tickets.find((t) => t.id === Number(id))
     if (!ticket) throw new HttpError(404, 'Ticket not found')
     return { statusCode: 200, body: ticket }
   },
 
   async create(req) {
-    const user = requireUser(req)
+    const userId = requireUser(req)
+    const users = await readUsers()
+    const user = users.find((u) => u.id === userId)
+    if (!user) throw new HttpError(401, 'Not authenticated')
+    
     const { title, description, category, priority } = req.body || {}
     if (!title || !category || !priority) {
       throw new HttpError(400, 'Title, category, and priority are required')
     }
 
-    const tickets = readTickets()
+    const tickets = await readTickets()
     const now = new Date().toISOString()
     const ticket = {
       id: nextId(tickets),
@@ -95,18 +109,22 @@ export const ticketRoutes = {
       updatedAt: now
     }
 
-    writeTickets([ticket, ...tickets])
+    await writeTickets([ticket, ...tickets])
     return { statusCode: 201, body: ticket }
   },
 
   async updateStatus(req, id) {
-    const requester = requireUser(req)
+    const userId = requireUser(req)
+    const users = await readUsers()
+    const requester = users.find((u) => u.id === userId)
+    if (!requester) throw new HttpError(401, 'Not authenticated')
+    
     const { status, resolutionNotes } = req.body || {}
     if (!Object.values(TICKET_STATUS).includes(status)) {
       throw new HttpError(400, 'Invalid status')
     }
 
-    const tickets = readTickets()
+    const tickets = await readTickets()
     const ticket = tickets.find((t) => t.id === Number(id))
     if (!ticket) throw new HttpError(404, 'Ticket not found')
 
@@ -132,20 +150,24 @@ export const ticketRoutes = {
       ticket.resolutionNotes = trimmedNotes
     }
     ticket.updatedAt = new Date().toISOString()
-    writeTickets(tickets)
+    await writeTickets(tickets)
     return { statusCode: 200, body: ticket }
   },
 
   async assign(req, id) {
-    const requester = requireUser(req)
+    const userId = requireUser(req)
+    const users = await readUsers()
+    const requester = users.find((u) => u.id === userId)
+    if (!requester) throw new HttpError(401, 'Not authenticated')
+    
     const { assignee } = req.body || {}
-    const tickets = readTickets()
+    const tickets = await readTickets()
     const ticket = tickets.find((t) => t.id === Number(id))
     if (!ticket) throw new HttpError(404, 'Ticket not found')
-    ticket.assignee = resolveAssignee(assignee, requester)
+    ticket.assignee = await resolveAssignee(assignee, requester)
     ticket.status = TICKET_STATUS.IN_PROGRESS
     ticket.updatedAt = new Date().toISOString()
-    writeTickets(tickets)
+    await writeTickets(tickets)
     return { statusCode: 200, body: ticket }
   },
 
@@ -155,19 +177,24 @@ export const ticketRoutes = {
     // resolutionNotes (which is only captured when a ticket is marked
     // Resolved) - remarks can be added at any stage, e.g. right after
     // assignment, to keep the requester in the loop.
-    const admin = requireAdmin(req)
+    const userId = requireUser(req)
+    const users = await readUsers()
+    const admin = users.find((u) => u.id === userId)
+    if (!admin) throw new HttpError(401, 'Not authenticated')
+    if (admin.role !== 'admin') throw new HttpError(403, 'Admins only')
+    
     const { remarks } = req.body || {}
     const trimmed = String(remarks || '').trim()
     if (!trimmed) throw new HttpError(400, 'Remarks cannot be empty')
 
-    const tickets = readTickets()
+    const tickets = await readTickets()
     const ticket = tickets.find((t) => t.id === Number(id))
     if (!ticket) throw new HttpError(404, 'Ticket not found')
     ticket.adminRemarks = trimmed
     ticket.adminRemarksBy = admin.name
     ticket.adminRemarksAt = new Date().toISOString()
     ticket.updatedAt = new Date().toISOString()
-    writeTickets(tickets)
+    await writeTickets(tickets)
     return { statusCode: 200, body: ticket }
   },
 
@@ -186,17 +213,21 @@ export const ticketRoutes = {
   },
 
   async acceptAndAssign(req, id) {
-    const requester = requireUser(req)
+    const userId = requireUser(req)
+    const users = await readUsers()
+    const requester = users.find((u) => u.id === userId)
+    if (!requester) throw new HttpError(401, 'Not authenticated')
+    
     const { assignee } = req.body || {}
-    const tickets = readTickets()
+    const tickets = await readTickets()
     const ticket = tickets.find((t) => t.id === Number(id))
     if (!ticket) throw new HttpError(404, 'Ticket not found')
 
     // Accept ticket (change from Newly Created to In Progress)
     ticket.status = TICKET_STATUS.IN_PROGRESS
-    ticket.assignee = resolveAssignee(assignee, requester)
+    ticket.assignee = await resolveAssignee(assignee, requester)
     ticket.updatedAt = new Date().toISOString()
-    writeTickets(tickets)
+    await writeTickets(tickets)
     return { statusCode: 200, body: ticket }
   }
 }

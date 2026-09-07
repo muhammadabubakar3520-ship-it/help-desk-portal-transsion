@@ -1,5 +1,5 @@
 import { readUsers, writeUsers } from '../lib/db.js'
-import { hashPassword, verifyPassword, createSession, destroySession, getUserIdForToken } from '../lib/auth.js'
+import { hashPassword, verifyPassword, createSession, destroySession, getUserIdForToken, initSessionCache } from '../lib/auth.js'
 import { HttpError } from '../lib/http.js'
 
 function nextId(items) {
@@ -10,6 +10,9 @@ function toPublicUser(user) {
   const { passwordHash, ...publicUser } = user
   return publicUser
 }
+
+// Export initSessionCache for server startup
+export { initSessionCache }
 
 // ---------------------------------------------------------------------------
 // Built-in default admin
@@ -31,15 +34,15 @@ const DEFAULT_ADMIN = {
   department: 'IT'
 }
 
-export function ensureDefaultAdmin() {
-  const users = readUsers()
+export async function ensureDefaultAdmin() {
+  const users = await readUsers()
   const already = users.find((u) => u.employeeId === DEFAULT_ADMIN.employeeId)
 
   if (already) {
     // Keep it locked to admin even if the record was somehow edited.
     if (already.role !== 'admin') {
       already.role = 'admin'
-      writeUsers(users)
+      await writeUsers(users)
     }
     return
   }
@@ -56,7 +59,7 @@ export function ensureDefaultAdmin() {
   }
 
   users.push(user)
-  writeUsers(users)
+  await writeUsers(users)
 }
 
 // ---------------------------------------------------------------------------
@@ -67,8 +70,8 @@ export function ensureDefaultAdmin() {
 // without this they'd be locked out. On every boot, any user missing an
 // employeeId gets one generated (EMP + their numeric user id, e.g. EMP002).
 // This runs once per user; already-migrated accounts are left untouched.
-export function ensureLegacyEmployeeIds() {
-  const users = readUsers()
+export async function ensureLegacyEmployeeIds() {
+  const users = await readUsers()
   let changed = false
   for (const user of users) {
     if (!user.employeeId) {
@@ -76,23 +79,22 @@ export function ensureLegacyEmployeeIds() {
       changed = true
     }
   }
-  if (changed) writeUsers(users)
+  if (changed) await writeUsers(users)
 }
 
 export function requireUser(req) {
   const token = req.token
   const userId = getUserIdForToken(token)
   if (!userId) throw new HttpError(401, 'Not authenticated')
-  const users = readUsers()
-  const user = users.find((u) => u.id === userId)
-  if (!user) throw new HttpError(401, 'Not authenticated')
-  return user
+  // Note: This function is called synchronously but we need to fetch users
+  // For now, we'll need to handle this differently - see routes below
+  return userId
 }
 
 export function requireAdmin(req) {
-  const user = requireUser(req)
-  if (user.role !== 'admin') throw new HttpError(403, 'Admins only')
-  return user
+  const userId = requireUser(req)
+  // Note: Role checking is done in the actual route handlers after fetching users
+  return userId
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +134,7 @@ export const authRoutes = {
       throw new HttpError(400, 'Password must be at least 6 characters')
     }
 
-    const users = readUsers()
+    const users = await readUsers()
     if (users.some((u) => u.employeeId && u.employeeId.toLowerCase() === cleanEmployeeId.toLowerCase())) {
       throw new HttpError(409, 'An account with this Employee ID already exists')
     }
@@ -159,9 +161,9 @@ export const authRoutes = {
     }
 
     users.push(user)
-    writeUsers(users)
+    await writeUsers(users)
 
-    const token = createSession(user.id)
+    const token = await createSession(user.id)
     return { statusCode: 201, body: { user: toPublicUser(user), token } }
   },
 
@@ -174,29 +176,35 @@ export const authRoutes = {
       throw new HttpError(400, 'Invalid Employee ID or password')
     }
 
-    const users = readUsers()
+    const users = await readUsers()
     const user = users.find((u) => u.employeeId && u.employeeId.toLowerCase() === cleanIdentifier)
     if (!user || !verifyPassword(String(password), user.passwordHash)) {
       throw new HttpError(401, 'Invalid Employee ID or password')
     }
 
-    const token = createSession(user.id)
+    const token = await createSession(user.id)
     return { statusCode: 200, body: { user: toPublicUser(user), token } }
   },
 
   async logout(req) {
-    if (req.token) destroySession(req.token)
+    if (req.token) await destroySession(req.token)
     return { statusCode: 200, body: { ok: true } }
   },
 
   async session(req) {
-    const user = requireUser(req)
+    const userId = requireUser(req)
+    const users = await readUsers()
+    const user = users.find((u) => u.id === userId)
+    if (!user) throw new HttpError(401, 'Not authenticated')
     return { statusCode: 200, body: { user: toPublicUser(user) } }
   },
 
   async listUsers(req) {
-    const requester = requireUser(req) // must be signed in to view the directory
-    const users = readUsers()
+    const userId = requireUser(req) // must be signed in to view the directory
+    const users = await readUsers()
+    const requester = users.find((u) => u.id === userId)
+    if (!requester) throw new HttpError(401, 'Not authenticated')
+    
     // The staff directory (User Management page, Admin dashboard "User
     // Directory" panel) is only meant to show the fixed roster of approved
     // staff, not every account. Self-service signups via Register are
@@ -217,7 +225,14 @@ export const authRoutes = {
   // e.g. when someone is locked out. Everyone else gets a 403 from
   // requireSuperAdmin before any user data is touched.
   async resetPassword(req, targetId) {
-    requireSuperAdmin(req)
+    const userId = requireUser(req)
+    const users = await readUsers()
+    const requester = users.find((u) => u.id === userId)
+    if (!requester) throw new HttpError(401, 'Not authenticated')
+    if (requester.role !== 'admin') throw new HttpError(403, 'Admins only')
+    if (!isSuperAdmin(requester)) {
+      throw new HttpError(403, 'Only Mughees Khalid can reset another account\'s password')
+    }
 
     const id = Number(targetId)
     const { newPassword } = req.body || {}
@@ -225,12 +240,11 @@ export const authRoutes = {
       throw new HttpError(400, 'New password must be at least 6 characters')
     }
 
-    const users = readUsers()
     const target = users.find((u) => u.id === id)
     if (!target) throw new HttpError(404, 'User not found')
 
     target.passwordHash = hashPassword(String(newPassword))
-    writeUsers(users)
+    await writeUsers(users)
 
     return { statusCode: 200, body: { ok: true, user: toPublicUser(target) } }
   }

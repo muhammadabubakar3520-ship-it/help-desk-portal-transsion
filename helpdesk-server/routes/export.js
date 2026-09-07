@@ -1,13 +1,9 @@
 import { readUsers, readTickets, readSessions } from '../lib/db.js'
-import { requireAdmin } from './auth.js'
+import { requireUser } from './auth.js'
+import { HttpError } from '../lib/http.js'
 import { buildPdf, heading, textLine, table } from '../lib/pdf.js'
 
-// The rest of the app renders dates client-side with `toLocaleString()`,
-// which uses the visitor's browser timezone. This export happens on the
-// server, so `toISOString()` (always UTC) would silently render times
-// that are hours off from what the same record shows in the UI. Format
-// explicitly in the organization's local timezone instead, so the PDF
-// always matches what users see on screen.
+
 const REPORT_TIMEZONE = 'Asia/Karachi'
 
 const dateFormatter = new Intl.DateTimeFormat('en-CA', {
@@ -39,25 +35,29 @@ function maskToken(token) {
 export const exportRoutes = {
   // GET /api/admin/export.pdf - admin-only. Builds a single PDF report
   // covering the user directory, every ticket, and active sessions,
-  // straight from the on-disk data store.
+  // straight from the database.
   async pdf(req) {
-    requireAdmin(req)
+    const userId = requireUser(req)
+    const users = await readUsers()
+    const user = users.find((u) => u.id === userId)
+    if (!user) throw new HttpError(401, 'Not authenticated')
+    if (user.role !== 'admin') throw new HttpError(403, 'Admins only')
 
     // Sort every section by a stable, predictable key before laying it out,
     // rather than trusting on-disk order (which only happens to be
     // insertion order, and isn't guaranteed once records are edited). This
     // is what keeps the report itself organized regardless of how the
-    // underlying .txt files are arranged.
-    const users = readUsers().slice().sort((a, b) => a.id - b.id)
-    const tickets = readTickets().slice().sort((a, b) => a.id - b.id)
-    const sessions = readSessions() // { [token]: { userId, createdAt } }
+    // underlying data is arranged.
+    const allUsers = users.slice().sort((a, b) => a.id - b.id)
+    const tickets = (await readTickets()).slice().sort((a, b) => a.id - b.id)
+    const sessions = await readSessions() // { [token]: { userId, createdAt } }
 
-    const usersById = new Map(users.map((u) => [u.id, u]))
+    const usersById = new Map(allUsers.map((u) => [u.id, u]))
     const sessionRows = Object.entries(sessions)
       .map(([token, session]) => {
-        const user = usersById.get(session.userId)
+        const sessionUser = usersById.get(session.userId)
         return {
-          cells: [maskToken(token), user ? user.name : `User #${session.userId}`, formatDate(session.createdAt)],
+          cells: [maskToken(token), sessionUser ? sessionUser.name : `User #${session.userId}`, formatDate(session.createdAt)],
           createdAt: session.createdAt || ''
         }
       })
@@ -70,25 +70,25 @@ export const exportRoutes = {
     for (const t of tickets) {
       ticketsByStatus.set(t.status, (ticketsByStatus.get(t.status) || 0) + 1)
     }
-    const adminCount = users.filter((u) => u.role === 'admin').length
+    const adminCount = allUsers.filter((u) => u.role === 'admin').length
 
     const lines = []
     lines.push(heading('Help Desk Portal - Admin Data Export', 16))
     lines.push(textLine(`Generated ${formatDate(new Date().toISOString())}`, 9))
 
     lines.push(heading('Summary', 12))
-    lines.push(textLine(`Users: ${users.length} total (${adminCount} admin, ${users.length - adminCount} employee)`, 10))
+    lines.push(textLine(`Users: ${allUsers.length} total (${adminCount} admin, ${allUsers.length - adminCount} employee)`, 10))
     lines.push(textLine(`Tickets: ${tickets.length} total`, 10))
     for (const [status, count] of [...ticketsByStatus.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
       lines.push(textLine(`  - ${status}: ${count}`, 9))
     }
     lines.push(textLine(`Active sessions: ${sessionRows.length}`, 10))
 
-    lines.push(heading(`Users (${users.length}), sorted by ID`, 12))
+    lines.push(heading(`Users (${allUsers.length}), sorted by ID`, 12))
     lines.push(
       ...table(
         ['ID', 'Name', 'Email', 'Role', 'Department'],
-        users.map((u) => [u.id, u.name, u.email, u.role, u.department]),
+        allUsers.map((u) => [u.id, u.name, u.email, u.role, u.department]),
         [5, 20, 28, 12, 14]
       )
     )

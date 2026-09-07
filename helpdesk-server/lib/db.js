@@ -1,295 +1,203 @@
-// Tiny plain-text "database". No external dependencies (no SQLite driver,
-// no ORM) so the server runs with nothing but stock Node.js. Good enough
-// for a small internal tool; swap this module out for a real database
-// (Postgres, MySQL, etc.) later without touching the route handlers, since
-// they only ever call the functions exported here.
+// MongoDB database layer using Mongoose
+// Replaces the plain-text file storage system with MongoDB for scalability and reliability
 //
-// Every collection is stored as a human-readable .txt file. Each record is
-// written as a block of "Label: value" lines, with blocks separated by a
-// divider line, e.g.:
-//
-//   User ID: 1
-//   Name: Ali
-//   Email: ali@gmail.com
-//   PasswordHash: xxxxxxxxx
-//   Role: Employee
-//   Created At: 2026-07-24
-//   --------------------------------
-//
-// This keeps the data fully readable/editable in any text editor while the
-// public API (db.read / db.write) keeps a stable signature, so nothing
-// outside this file needs to know or care that storage is plain text.
-// This module contains 100% of the storage logic - no other backend file
-// touches the filesystem or knows about the .txt format.
+// This module maintains the same API as the original (db.read / db.write) for backward
+// compatibility, but stores data in MongoDB instead of .txt files.
 
-import fs from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import mongoose from 'mongoose'
+import { User } from '../models/User.js'
+import { Ticket } from '../models/Ticket.js'
+import { Session } from '../models/Session.js'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const DATA_DIR = path.join(__dirname, '..', 'data')
+let dbConnected = false
 
-const DIVIDER = '-'.repeat(34)
-const DIVIDER_RE = /^-{3,}$/
+// Initialize MongoDB connection
+export async function initDatabase() {
+  if (dbConnected) return
 
-// ---------------------------------------------------------------------------
-// Field schemas: define the on-disk label + type for every field of every
-// collection, in the exact order they should appear in the .txt file. This
-// is what makes the files human-readable ("User ID" instead of "id", etc.)
-// while still round-tripping perfectly back into JS objects.
-// ---------------------------------------------------------------------------
+  const mongoUri = process.env.MONGODB_URI
 
-const USERS_SCHEMA = [
-  { key: 'id', label: 'User ID', type: 'number' },
-  { key: 'employeeId', label: 'Employee ID', type: 'nullableString' },
-  { key: 'name', label: 'Name', type: 'string' },
-  { key: 'email', label: 'Email', type: 'string' },
-  { key: 'passwordHash', label: 'PasswordHash', type: 'string' },
-  { key: 'role', label: 'Role', type: 'string' },
-  { key: 'department', label: 'Department', type: 'string' },
-  { key: 'createdAt', label: 'Created At', type: 'string' }
-]
-
-const TICKETS_SCHEMA = [
-  { key: 'id', label: 'Ticket ID', type: 'number' },
-  { key: 'title', label: 'Title', type: 'string' },
-  { key: 'description', label: 'Description', type: 'string' },
-  { key: 'category', label: 'Category', type: 'string' },
-  { key: 'requester', label: 'Created By', type: 'string' },
-  { key: 'requesterEmail', label: 'Requester Email', type: 'string' },
-  { key: 'assignee', label: 'Assigned To', type: 'nullableString' },
-  { key: 'priority', label: 'Priority', type: 'string' },
-  { key: 'status', label: 'Status', type: 'string' },
-  { key: 'resolutionNotes', label: 'Resolution Notes', type: 'nullableString' },
-  { key: 'adminRemarks', label: 'Admin Remarks', type: 'nullableString' },
-  { key: 'adminRemarksBy', label: 'Admin Remarks By', type: 'nullableString' },
-  { key: 'adminRemarksAt', label: 'Admin Remarks At', type: 'nullableString' },
-  { key: 'createdAt', label: 'Created At', type: 'string' },
-  { key: 'updatedAt', label: 'Updated At', type: 'string' }
-]
-
-// Sessions are stored as { [token]: { userId, createdAt } } in memory, but
-// on disk they're just another block-per-record text file.
-const SESSIONS_SCHEMA = [
-  { key: 'token', label: 'Token', type: 'string' },
-  { key: 'userId', label: 'User ID', type: 'number' },
-  { key: 'createdAt', label: 'Created At', type: 'string' }
-]
-
-const SCHEMAS = {
-  users: USERS_SCHEMA,
-  tickets: TICKETS_SCHEMA,
-  sessions: SESSIONS_SCHEMA
-}
-
-// Collections that are conceptually a dictionary (keyed by a field) rather
-// than a plain array. Only `sessions` needs this today.
-const DICT_COLLECTIONS = new Set(['sessions'])
-const DICT_KEY_FIELD = { sessions: 'token' }
-
-// ---------------------------------------------------------------------------
-// Low-level text <-> records (de)serialization
-// ---------------------------------------------------------------------------
-
-function labelize(key) {
-  if (key.toLowerCase() === 'id') return 'ID'
-  const withSpaces = key.replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-  return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1)
-}
-
-// Best-effort schema for a collection we don't have an explicit schema for,
-// inferred from a sample record. Keeps the store usable even if a new
-// collection is added later without updating this file.
-function inferSchema(sampleRecord) {
-  if (!sampleRecord || typeof sampleRecord !== 'object') return []
-  return Object.keys(sampleRecord).map((key) => ({ key, label: labelize(key), type: 'string' }))
-}
-
-function coerce(rawValue, type) {
-  if (type === 'number') return rawValue === '' ? null : Number(rawValue)
-  if (type === 'nullableString') return rawValue === '' ? null : rawValue
-  return rawValue
-}
-
-function serializeRecords(records, schema) {
-  if (!records.length) return ''
-  return (
-    records
-      .map((record) => {
-        const lines = schema.map(({ key, label }) => {
-          const value = record[key]
-          return `${label}: ${value === null || value === undefined ? '' : value}`
-        })
-        return `${lines.join('\n')}\n${DIVIDER}`
-      })
-      .join('\n') + '\n'
-  )
-}
-
-function parseRecords(raw, schema) {
-  if (!raw || !raw.trim()) return []
-
-  const labelToField = new Map(schema.map((field) => [field.label.toLowerCase(), field]))
-  const lines = raw.split(/\r?\n/)
-
-  const records = []
-  let current = {}
-  let hasContent = false
-
-  const flush = () => {
-    if (hasContent) records.push(current)
-    current = {}
-    hasContent = false
-  }
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim()
-    if (!line) continue
-    if (DIVIDER_RE.test(line)) {
-      flush()
-      continue
-    }
-    const separatorIndex = line.indexOf(':')
-    if (separatorIndex === -1) continue
-
-    const label = line.slice(0, separatorIndex).trim()
-    const value = line.slice(separatorIndex + 1).trim()
-    const field = labelToField.get(label.toLowerCase())
-    if (!field) continue // unknown label - ignore rather than corrupt the record
-
-    current[field.key] = coerce(value, field.type)
-    hasContent = true
-  }
-  flush() // handle a file that doesn't end with a trailing divider
-
-  return records
-}
-
-// ---------------------------------------------------------------------------
-// File helpers
-// ---------------------------------------------------------------------------
-
-function filePath(name) {
-  return path.join(DATA_DIR, `${name}.txt`)
-}
-
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true })
-  }
-}
-
-function toRecords(name, data) {
-  if (DICT_COLLECTIONS.has(name)) {
-    const keyField = DICT_KEY_FIELD[name]
-    return Object.entries(data || {}).map(([key, value]) => ({ [keyField]: key, ...value }))
-  }
-  return Array.isArray(data) ? data : []
-}
-
-function fromRecords(name, records) {
-  if (DICT_COLLECTIONS.has(name)) {
-    const keyField = DICT_KEY_FIELD[name]
-    const dict = {}
-    for (const record of records) {
-      const { [keyField]: key, ...rest } = record
-      if (key) dict[key] = rest
-    }
-    return dict
-  }
-  return records
-}
-
-// ---------------------------------------------------------------------------
-// Public API (unchanged signatures - db.read(name, fallback) / db.write(name, data))
-// ---------------------------------------------------------------------------
-
-function readCollection(name, fallback = []) {
-  ensureDataDir()
-
-  const file = filePath(name)
-  if (!fs.existsSync(file)) {
-    // Never crash because a file is missing - create it (empty) on first
-    // access and hand back the fallback value.
-    writeCollection(name, fallback)
-    return structuredClone(fallback)
-  }
-
-  const schema = SCHEMAS[name] || inferSchema(toRecords(name, fallback)[0])
-
-  let raw
-  try {
-    raw = fs.readFileSync(file, 'utf8')
-  } catch (err) {
-    // File exists but couldn't be read (permissions, disk error, etc.) -
-    // degrade gracefully instead of crashing the server.
-    console.error(`[db] Failed to read ${file}:`, err.message)
-    return structuredClone(fallback)
+  if (!mongoUri) {
+    console.error('❌ MONGODB_URI environment variable is not set!')
+    console.error('Please add MONGODB_URI to your .env file')
+    console.error('Example: mongodb+srv://username:password@cluster.mongodb.net/helpdesk-db')
+    throw new Error('MongoDB URI not configured')
   }
 
   try {
-    const records = parseRecords(raw, schema)
-    return fromRecords(name, records)
-  } catch (err) {
-    // A malformed/corrupted .txt file should never take the server down -
-    // log it and fall back to an empty collection rather than throwing.
-    console.error(`[db] Failed to parse ${file}, treating as empty:`, err.message)
-    return structuredClone(fallback)
+    await mongoose.connect(mongoUri, {
+      retryWrites: true,
+      w: 'majority',
+      serverSelectionTimeoutMS: 5000
+    })
+    dbConnected = true
+    console.log('✅ Connected to MongoDB')
+  } catch (error) {
+    console.error('❌ Failed to connect to MongoDB:', error.message)
+    throw error
   }
 }
 
-function writeCollection(name, data) {
-  ensureDataDir()
-  const records = toRecords(name, data)
-  const schema = SCHEMAS[name] || inferSchema(records[0])
-  fs.writeFileSync(filePath(name), serializeRecords(records, schema))
-}
-
-// Ensures the data directory and every known collection's .txt file exist
-// before the server starts accepting requests, so nothing needs to be
-// created manually and the very first request never has to lazily create
-// a file mid-flight. Existing files/data are never touched or overwritten.
-const DEFAULT_FALLBACKS = { users: [], tickets: [], sessions: {} }
-
-export function initStorage() {
-  ensureDataDir()
-  for (const name of Object.keys(DEFAULT_FALLBACKS)) {
-    const file = filePath(name)
-    if (!fs.existsSync(file)) {
-      writeCollection(name, DEFAULT_FALLBACKS[name])
-    }
-  }
-  return Object.keys(DEFAULT_FALLBACKS).map((name) => filePath(name))
-}
-
+// Generic collection read/write - maintains backward compatibility
 export const db = {
-  read: readCollection,
-  write: writeCollection
+  read: async (name, fallback = []) => {
+    try {
+      switch (name) {
+        case 'users':
+          return await readUsers()
+        case 'tickets':
+          return await readTickets()
+        case 'sessions':
+          return await readSessions()
+        default:
+          return fallback
+      }
+    } catch (error) {
+      console.error(`[db] Failed to read ${name}:`, error.message)
+      return structuredClone(fallback)
+    }
+  },
+
+  write: async (name, data) => {
+    try {
+      switch (name) {
+        case 'users':
+          return await writeUsers(data)
+        case 'tickets':
+          return await writeTickets(data)
+        case 'sessions':
+          return await writeSessions(data)
+      }
+    } catch (error) {
+      console.error(`[db] Failed to write ${name}:`, error.message)
+    }
+  }
 }
 
-// Explicit, named helpers per the requested storage-layer API. These are
-// thin, self-documenting wrappers around db.read/db.write for the two
-// primary collections; routes are free to use either form.
-export function readUsers() {
-  return db.read('users', [])
+// User operations
+export async function readUsers() {
+  try {
+    const users = await User.find({}).lean()
+    return users || []
+  } catch (error) {
+    console.error('[db] Failed to read users:', error.message)
+    return []
+  }
 }
 
-export function writeUsers(users) {
-  db.write('users', users)
+export async function writeUsers(users) {
+  try {
+    if (!Array.isArray(users)) return
+
+    // Clear existing users
+    await User.deleteMany({})
+
+    // Insert new users
+    if (users.length > 0) {
+      await User.insertMany(users, { ordered: false })
+    }
+  } catch (error) {
+    console.error('[db] Failed to write users:', error.message)
+    throw error
+  }
 }
 
-export function readTickets() {
-  return db.read('tickets', [])
+// Ticket operations
+export async function readTickets() {
+  try {
+    const tickets = await Ticket.find({}).lean()
+    return tickets || []
+  } catch (error) {
+    console.error('[db] Failed to read tickets:', error.message)
+    return []
+  }
 }
 
-export function writeTickets(tickets) {
-  db.write('tickets', tickets)
+export async function writeTickets(tickets) {
+  try {
+    if (!Array.isArray(tickets)) return
+
+    // Update or insert tickets
+    for (const ticket of tickets) {
+      if (ticket.id) {
+        await Ticket.findOneAndUpdate(
+          { id: ticket.id },
+          ticket,
+          { upsert: true, new: true }
+        )
+      } else {
+        await Ticket.create(ticket)
+      }
+    }
+  } catch (error) {
+    console.error('[db] Failed to write tickets:', error.message)
+    throw error
+  }
 }
 
-export function readSessions() {
-  return db.read('sessions', {})
+// Session operations
+export async function readSessions() {
+  try {
+    const sessionDocs = await Session.find({}).lean()
+    const sessions = {}
+    sessionDocs.forEach(doc => {
+      sessions[doc.token] = {
+        userId: doc.userId,
+        createdAt: doc.createdAt
+      }
+    })
+    return sessions
+  } catch (error) {
+    console.error('[db] Failed to read sessions:', error.message)
+    return {}
+  }
 }
 
-export function writeSessions(sessions) {
-  db.write('sessions', sessions)
+export async function writeSessions(sessions) {
+  try {
+    // Clear existing sessions
+    await Session.deleteMany({})
+
+    // Insert new sessions
+    if (sessions && typeof sessions === 'object') {
+      const sessionArray = Object.entries(sessions).map(([token, data]) => ({
+        token,
+        userId: data.userId,
+        createdAt: data.createdAt
+      }))
+
+      if (sessionArray.length > 0) {
+        await Session.insertMany(sessionArray, { ordered: false })
+      }
+    }
+  } catch (error) {
+    console.error('[db] Failed to write sessions:', error.message)
+    throw error
+  }
+}
+
+// Initialize storage (creates data directory structure for backward compatibility)
+// This is now async due to MongoDB connection
+export async function initStorage() {
+  await initDatabase()
+  // Ensure collections exist by creating indexes
+  try {
+    await User.collection.createIndex({ id: 1 })
+    await User.collection.createIndex({ email: 1 })
+    await User.collection.createIndex({ employeeId: 1 })
+
+    await Ticket.collection.createIndex({ id: 1 })
+    await Ticket.collection.createIndex({ status: 1 })
+    await Ticket.collection.createIndex({ requester: 1 })
+    await Ticket.collection.createIndex({ assignee: 1 })
+
+    await Session.collection.createIndex({ token: 1 })
+    await Session.collection.createIndex({ createdAt: 1 }, { expireAfterSeconds: 604800 })
+
+    console.log('✅ Database indexes created')
+  } catch (error) {
+    console.error('⚠️ Warning: Failed to create indexes:', error.message)
+  }
+
+  return []
 }
