@@ -28,7 +28,7 @@ export async function initDatabase() {
     await mongoose.connect(mongoUri, {
       retryWrites: true,
       w: 'majority',
-      serverSelectionTimeoutMS: 5000
+      serverSelectionTimeoutMS: 30000
     })
     dbConnected = true
     console.log('✅ Connected to MongoDB')

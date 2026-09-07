@@ -58,10 +58,10 @@ export const exportRoutes = {
         const sessionUser = usersById.get(session.userId)
         return {
           cells: [maskToken(token), sessionUser ? sessionUser.name : `User #${session.userId}`, formatDate(session.createdAt)],
-          createdAt: session.createdAt || ''
+          createdAt: session.createdAt
         }
       })
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime())
       .map((row) => row.cells)
 
     // Quick-reference counts up front, so a reader can see the shape of the
