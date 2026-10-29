@@ -4,6 +4,32 @@ import { UserPlus } from 'lucide-react'
 import Logo from '../assets/logo.jsx'
 import { useAuth } from '../hooks/useAuth'
 
+// Checks that the full name looks like a real name
+function validateFullName(raw) {
+  const name = raw.trim().replace(/\s+/g, ' ')
+  if (!name) return 'Please enter your full name.'
+  if (name.length < 5) return 'Full name is too short.'
+  if (name.length > 50) return 'Full name is too long.'
+  if (!/^[A-Za-z][A-Za-z.' -]*$/.test(name))
+    return 'Name can contain only letters and spaces (no numbers or symbols).'
+  const words = name.split(' ').filter((w) => /[A-Za-z]/.test(w))
+  if (words.length < 2) return 'Please enter your first and last name (e.g. Bilal Ahmed).'
+  if (!words.some((w) => w.replace(/[.'-]/g, '').length >= 3))
+    return 'Please enter your complete name, not initials only.'
+  if (/(.)\1\1/i.test(name.replace(/\s/g, ''))) return 'Please enter your real name.'
+  return ''
+}
+
+// Cleans the name: "bilal   ahmed" -> "Bilal Ahmed"
+function formatName(raw) {
+  return raw
+    .trim()
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ')
+}
+
 export default function Register() {
   const { register } = useAuth()
   const navigate = useNavigate()
@@ -14,11 +40,20 @@ export default function Register() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
+  const [nameError, setNameError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   async function handleSubmit(event) {
     event.preventDefault()
     setError('')
+
+    const nameProblem = validateFullName(name)
+    if (nameProblem) {
+      setNameError(nameProblem)
+      setError(nameProblem)
+      return
+    }
+    const cleanName = formatName(name)
 
     if (password !== confirmPassword) {
       setError('Passwords do not match')
@@ -27,7 +62,7 @@ export default function Register() {
 
     setSubmitting(true)
     try {
-      await register({ name, employeeId, password, department })
+      await register({ name: cleanName, employeeId: employeeId.trim(), password, department: department.trim() })
       navigate('/dashboard')
     } catch (err) {
       setError(err.message || 'Unable to create account')
@@ -58,11 +93,27 @@ export default function Register() {
             id="name"
             type="text"
             required
+            autoComplete="name"
+            maxLength={50}
             className="input-field"
             placeholder="Bilal Ahmed"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value)
+              if (nameError) setNameError('')
+            }}
+            onBlur={() => {
+              if (!name.trim()) return
+              const problem = validateFullName(name)
+              setNameError(problem)
+              if (!problem) setName(formatName(name))
+            }}
           />
+          {nameError ? (
+            <p className="mt-1 text-xs font-medium text-signal-coral">{nameError}</p>
+          ) : (
+            <p className="mt-1 text-xs text-slate-400">Enter your first and last name as on your company ID.</p>
+          )}
         </div>
 
         <div>
@@ -140,6 +191,3 @@ export default function Register() {
           </Link>
         </p>
       </form>
-    </div>
-  )
-}
