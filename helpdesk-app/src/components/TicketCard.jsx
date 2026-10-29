@@ -1,11 +1,28 @@
 import { Link } from 'react-router-dom'
-import { Calendar, UserRound } from 'lucide-react'
+import { Calendar, UserRound, UserPen } from 'lucide-react'
 import { PRIORITY_STYLES, STATUS_STYLES } from '../utils/constants'
 import { ticketId, timeAgo, formatDateTime } from '../utils/helpers'
+
+// Finds the name of the person who created the ticket,
+// whatever field name the data uses.
+function getCreatorName(ticket) {
+  const c = ticket.createdBy ?? ticket.created_by ?? ticket.user ?? ticket.requester
+  if (c && typeof c === 'object') return c.name || c.fullName || c.email || ''
+  return (
+    ticket.createdByName ||
+    ticket.created_by_name ||
+    ticket.userName ||
+    ticket.requesterName ||
+    ticket.employeeName ||
+    (typeof c === 'string' ? c : '') ||
+    ''
+  )
+}
 
 export default function TicketCard({ ticket, action }) {
   const priorityStyle = PRIORITY_STYLES[ticket.priority] || PRIORITY_STYLES.Medium
   const statusClass = STATUS_STYLES[ticket.status] || STATUS_STYLES.Open
+  const creatorName = getCreatorName(ticket)
 
   return (
     <div className="card card-hover flex overflow-hidden">
@@ -50,12 +67,24 @@ export default function TicketCard({ ticket, action }) {
             </span>
             <span>&middot; updated {timeAgo(ticket.updatedAt)}</span>
           </div>
-          {ticket.assignee && (
-            <span className="inline-flex items-center gap-1 font-medium text-slate-500">
-              <UserRound className="h-3.5 w-3.5" /> {ticket.assignee}
-            </span>
-          )}
         </div>
+
+        {(creatorName || ticket.assignee) && (
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
+            {creatorName && (
+              <span className="inline-flex items-center gap-1 text-slate-500">
+                <UserPen className="h-3.5 w-3.5" />
+                Created by: <span className="font-medium text-ink-700">{creatorName}</span>
+              </span>
+            )}
+            {ticket.assignee && (
+              <span className="inline-flex items-center gap-1 text-slate-500">
+                <UserRound className="h-3.5 w-3.5" />
+                Assigned to: <span className="font-medium text-ink-700">{ticket.assignee}</span>
+              </span>
+            )}
+          </div>
+        )}
 
         {action && <div className="pt-1">{action}</div>}
       </div>
